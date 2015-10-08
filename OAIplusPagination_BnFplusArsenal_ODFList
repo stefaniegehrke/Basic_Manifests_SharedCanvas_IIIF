@@ -1,0 +1,382 @@
+<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform"
+    version="2.0"
+    xmlns:dc="http://purl.org/dc/elements/1.1/"
+    xmlns:dcterms="http://purl.org/dc/terms/"
+    xmlns:ore="http://www.openarchives.org/ore/terms/"
+    xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
+    xmlns:exif="http://www.w3.org/2003/12/exif/ns#"
+    xmlns:sc="http://iiif.io/api/presentation/2/context.json"
+    xmlns:rdfs="http://www.w3.org/2000/01/rdf-schema#"
+    xmlns="http://xmlns.com/foaf/0.1"
+    xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+    xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+    xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+    xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+    xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+    xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0"
+    xmlns:xlink="http://www.w3.org/1999/xlink"
+    xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0"
+    xmlns:number="urn:oasis:names:tc:opendocument:xmlns:datastyle:1.0"
+    xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+    xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+    xmlns:chart="urn:oasis:names:tc:opendocument:xmlns:chart:1.0"
+    xmlns:dr3d="urn:oasis:names:tc:opendocument:xmlns:dr3d:1.0"
+    xmlns:math="http://www.w3.org/1998/Math/MathML"
+    xmlns:form="urn:oasis:names:tc:opendocument:xmlns:form:1.0"
+    xmlns:script="urn:oasis:names:tc:opendocument:xmlns:script:1.0"
+    xmlns:ooo="http://openoffice.org/2004/office" xmlns:ooow="http://openoffice.org/2004/writer"
+    xmlns:oooc="http://openoffice.org/2004/calc" xmlns:dom="http://www.w3.org/2001/xml-events"
+    xmlns:xforms="http://www.w3.org/2002/xforms" xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:rpt="http://openoffice.org/2005/report"
+    xmlns:of="urn:oasis:names:tc:opendocument:xmlns:of:1.2"
+    xmlns:xhtml="http://www.w3.org/1999/xhtml" xmlns:grddl="http://www.w3.org/2003/g/data-view#"
+    xmlns:tableooo="http://openoffice.org/2009/table"
+    xmlns:field="urn:openoffice:names:experimental:ooo-ms-interop:xmlns:field:1.0"
+    office:version="1.2">
+    
+    <xsl:output method="xml" encoding="UTF-8" indent="yes"/>  
+    
+    <!-- last change 05-05-2015, Stefanie Gehrke -->
+    
+    <!-- useful parameters, e.g. line with the headers, if there is some data above -->
+    
+    <!-- row with the header data, real data in the row below -->
+    <xsl:param name="rowOfHeader">1</xsl:param>
+    
+    <!-- =================================================== -->
+    <!-- select the input data fields via the header, so if the spreadsheet changes, only substitute the header texts -->
+    <!-- Important: as empty repeated cells get <table:table-cell table:number-columns-repeated="5"/>                 -->
+    
+    <xsl:param name="columnOfID">
+        <xsl:for-each select="//table:table[@table:name='Manifest']//table:table-row[position() = $rowOfHeader]/table:table-cell">
+            <xsl:if test="text:p = 'Ark_Gallica'">
+                <!-- get the repeated entries minus their occurance, that is the column offset you need to add -->
+                <xsl:variable name="offset">
+                    <xsl:value-of select="sum(preceding-sibling::table:table-cell[@table:number-columns-repeated]/@table:number-columns-repeated)-count(preceding-sibling::table:table-cell[@table:number-columns-repeated]/@table:number-columns-repeated)"/>                    
+                </xsl:variable>
+                <xsl:value-of select="position()+$offset"/></xsl:if>
+        </xsl:for-each>
+    </xsl:param>
+    
+    <!-- Add correct path for project here! -->
+    <xsl:param name="basePath"><xsl:text>./</xsl:text></xsl:param>
+    
+    <!-- set hosts, paths, identifier, etc-->
+    <xsl:param name="scheme_host">http://iiif.biblissima.fr/manifests/</xsl:param>
+    <xsl:param name="prefix">ark:/12148/</xsl:param>
+
+    <!-- /IIIF/ ? -->
+    <xsl:template match="/">
+        <!-- iterate over all records -->
+        <xsl:for-each select="//table:table[@table:name='Manifest']//table:table-row">
+            <xsl:if test="position() &gt; $rowOfHeader and .//text:p">
+                <xsl:variable name="thisColumnOfID">
+                    <xsl:for-each select="table:table-cell">
+                        <!-- get the repeated entries minus their occurance, that is the column offset you need to add -->
+                        <xsl:variable name="offset">
+                            <xsl:value-of select="sum(preceding-sibling::table:table-cell[@table:number-columns-repeated]/@table:number-columns-repeated)-count(preceding-sibling::table:table-cell[@table:number-columns-repeated]/@table:number-columns-repeated)"/>                    
+                        </xsl:variable>
+                        <xsl:if test="position()+$offset = $columnOfID">
+                            <xsl:value-of select="position()"/>
+                        </xsl:if>                           
+                    </xsl:for-each>
+                </xsl:variable> 
+                <xsl:variable name="thisID"><xsl:value-of select="table:table-cell[position() = $thisColumnOfID]/text:p"/></xsl:variable>
+                <xsl:if test="$thisID != ''">
+                    <xsl:variable name="fullidentifier">    
+                        <xsl:value-of select="substring-after($thisID,'ark:/12148/')"/>
+                    </xsl:variable>
+                    <xsl:variable name="short_identifier"><xsl:value-of select="substring(substring-after($fullidentifier,'btv1b'),1,7)"/></xsl:variable>
+                    <xsl:variable name="medium_identifier"><xsl:value-of select="substring-after($fullidentifier,'btv1b')"/></xsl:variable>
+                    
+                    <xsl:variable name="output_dir">./</xsl:variable>    
+                    
+                    <xsl:variable name="oai_file">http://oai.bnf.fr/oai2/OAIHandler?verb=GetRecord&amp;metadataPrefix=oai_dc&amp;identifier=ark:/12148/<xsl:value-of select="$fullidentifier"/></xsl:variable>
+                    <xsl:variable name="pagination_file">http://gallica.bnf.fr/services/Pagination?ark={<xsl:value-of select="$fullidentifier"/>}</xsl:variable>
+                    
+                    
+                    <xsl:variable name="scBaseURI"><xsl:value-of select="$scheme_host"/>iiif/metadata/<xsl:value-of select="$prefix"/><xsl:value-of select="$fullidentifier"/>/</xsl:variable>
+                    <xsl:variable name="imageBaseURI">http://demos.biblissima-condorcet.fr/iiif/image/<xsl:value-of select="$prefix"/><xsl:value-of select="$fullidentifier"/>/</xsl:variable>
+                    
+        <!-- Manifest -->
+        <!-- result next to OAI, otherwise use outputdir as in example below -->
+        <xsl:variable name="outputDate"><xsl:value-of select="current-date()"/></xsl:variable>
+        <xsl:variable name="outputFile"><xsl:value-of select="$output_dir"/>0<xsl:value-of select="$medium_identifier"/>_gallica_manifest_complete-<xsl:value-of select="substring-before($outputDate,'+')"/>.json</xsl:variable>        
+        
+        <xsl:variable name="foundLR"><xsl:for-each select="document(pagination_file)//numero">
+            <xsl:if test="contains(.,'l') and contains(.,'r')">doublepage</xsl:if>
+        </xsl:for-each></xsl:variable>
+        
+        <xsl:if test="not(starts-with($fullidentifier,'btv1b90')) and not(contains($foundLR,'doublepage'))">
+            
+        <xsl:result-document href="{$outputFile}" method="text" encoding="UTF-8" indent="no">
+            <!-- for manifest only @id and @type required -->
+            <!-- for manifest metadata, description and thumbnail are recommended -->
+            {
+            "@context":"http://iiif.io/api/presentation/2/context.json",
+            "@id":"<xsl:value-of select="$scBaseURI"/>manifest.json",
+            "@type":"sc:Manifest",
+            <!-- Description Metadata -->
+            <!-- label shortened -->
+            <xsl:variable name="DCSource"><xsl:value-of select="normalize-space(document($oai_file)//dc:source)"/></xsl:variable>
+            "label":"<xsl:choose>
+                <xsl:when test="contains($DCSource,'Bibliothèque nationale')">Paris, BnF, MSS <xsl:value-of select="normalize-space(substring-after(substring-after(document($oai_file)//dc:source,','),','))"/></xsl:when>
+                <xsl:when test="contains($DCSource,'Arsenal')">Paris, BnF, <xsl:value-of select="normalize-space(document($oai_file)//dc:source)"/></xsl:when>
+                <xsl:when test="starts-with($DCSource, 'D')">Paris, BnF, MSS <xsl:value-of select="normalize-space(substring-before(document($oai_file)//dc:source,','))"/></xsl:when>
+                <xsl:otherwise><xsl:value-of select="normalize-space(document($oai_file)//dc:source)"/></xsl:otherwise></xsl:choose>",
+            
+            "metadata":[
+            {"label":"Repository","value":"<xsl:choose><xsl:when test="contains($DCSource,'Bibliothèque nationale')"><xsl:value-of select="normalize-space(substring-before(document($oai_file)//dc:source,','))"/>, <xsl:value-of select="normalize-space(substring-before(substring-after(document($oai_file)//dc:source,','),','))"/></xsl:when><xsl:otherwise>Bibliothèque nationale de France, Département des manuscrits</xsl:otherwise></xsl:choose>"},
+            {"label":"Shelfmark","value":"<xsl:choose><xsl:when test="contains($DCSource,'Bibliothèque nationale')"><xsl:value-of select="normalize-space(substring-after(substring-after(document($oai_file)//dc:source,','),','))"/></xsl:when><xsl:when test="starts-with($DCSource, 'D')"><xsl:value-of select="normalize-space(substring-after(document($oai_file)//dc:source,','))"/></xsl:when>
+                <xsl:otherwise><xsl:value-of select="normalize-space(document($oai_file)//dc:source)"/></xsl:otherwise></xsl:choose>"},
+            <xsl:variable name="titleList">
+                    <xsl:choose>
+                        <xsl:when test="count(document($oai_file)//dc:title) &lt; 2">
+                            "<xsl:value-of select="normalize-space(document($oai_file)//dc:title)"/>"
+                        </xsl:when>
+                        <xsl:otherwise>
+                            [
+                            <xsl:for-each select="document($oai_file)//dc:title">  
+                                "<xsl:value-of select="normalize-space(.)"/>"<xsl:if test="position() != last()">,</xsl:if></xsl:for-each>]
+                        </xsl:otherwise>
+                    </xsl:choose>
+            </xsl:variable>
+            {"label":"Title","value" : <xsl:value-of select="normalize-space($titleList)"/>},
+            <xsl:variable name="languageList">
+                <xsl:choose>
+                    <xsl:when test="count(document($oai_file)//dc:language) &lt; 2">
+                        "<xsl:value-of select="normalize-space(document($oai_file)//dc:language)"/>"
+                    </xsl:when>
+                    <xsl:otherwise>
+                        [
+                        <xsl:for-each-group select="document($oai_file)//dc:language" group-by="text()"> <!-- unique list -->
+                            "<xsl:value-of select="normalize-space(current-group()[1])"/>" 
+                            <xsl:if test="position() != last()">,</xsl:if>
+                        </xsl:for-each-group>]
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:variable>   
+            <xsl:choose>
+                <xsl:when test="count(document($oai_file)//dc:language) != 0"> 
+            {"label":"Language",
+            "value" :<xsl:value-of select="normalize-space($languageList)"/>},
+                </xsl:when>
+            </xsl:choose>
+           
+            <xsl:variable name="authorList">
+                <xsl:choose>
+                    <xsl:when test="count(document($oai_file)//dc:creator) &lt; 2">
+                        "<xsl:value-of select="normalize-space(document($oai_file)//dc:creator)"/>"
+                    </xsl:when>
+                    <xsl:otherwise>
+                        [
+                        <xsl:for-each select="document($oai_file)//dc:creator">
+                            "<xsl:value-of select="normalize-space(.)"/>"
+                            <xsl:if test="position() != last()">,</xsl:if>
+                        </xsl:for-each>]
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:variable>
+            <xsl:choose>
+                <xsl:when test="count(document($oai_file)//dc:creator) != 0">
+            {"label":"Creator",
+            "value":<xsl:value-of select="normalize-space($authorList)"/>},   
+                </xsl:when>
+            </xsl:choose>
+            
+            <xsl:variable name="contributorList">
+                <xsl:choose>
+                    <xsl:when test="count(document($oai_file)//dc:contributor) &lt; 2">
+                        "<xsl:value-of select="normalize-space(document($oai_file)//dc:contributor)"/>"
+                    </xsl:when>
+                    <xsl:otherwise>
+                        [
+                        <xsl:for-each select="document($oai_file)//dc:contributor">
+                            "<xsl:value-of select="normalize-space(.)"/>"
+                            <xsl:if test="position() != last()">,</xsl:if>
+                        </xsl:for-each>]
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:variable> 
+            <xsl:choose>
+                <xsl:when test="count(document($oai_file)//dc:contributor) != 0">
+            {"label":"Contributor",
+            "value":<xsl:value-of select="normalize-space($contributorList)"/>},
+                </xsl:when>
+            </xsl:choose>
+            
+            <xsl:variable name="dateList">
+                <xsl:choose>
+                    <xsl:when test="count(document($oai_file)//dc:date) &lt; 2">
+                        "<xsl:value-of select="normalize-space(document($oai_file)//dc:date)"/>"
+                    </xsl:when>
+                    <xsl:otherwise>
+                        [
+                        <xsl:for-each select="document($oai_file)//dc:date">
+                            "<xsl:value-of select="normalize-space(.)"/>"
+                            <xsl:if test="position() != last()">,</xsl:if>
+                        </xsl:for-each>]
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:variable>   
+            <xsl:choose>
+                <xsl:when test="count(//dc:date) != 0">
+            {"label":"Date",
+            "value":<xsl:value-of select="normalize-space($dateList)"/>},
+                </xsl:when>
+            </xsl:choose>
+            
+            <xsl:variable name="dimensions">
+                <xsl:variable name="format">
+                    <xsl:for-each select="document($oai_file)//dc:format">
+                        <xsl:value-of select="."></xsl:value-of>
+                    </xsl:for-each>
+                </xsl:variable>
+                <xsl:choose>
+                    <!-- finding text Hauteur / largeur  -->
+                    <xsl:when test="matches($format,'[hH]auteur') and matches($format,'[lL]argeur') and not(matches($format,'[0-9]+ *[xX×] *[0-9]+ *mm'))">
+                        <xsl:variable name="H"><xsl:value-of select="substring-before(substring-after(document($oai_file)//dc:format,'auteur,'),';')"/></xsl:variable>
+                        <xsl:variable name="W"><xsl:value-of select="substring-after(document($oai_file)//dc:format,'argeur,')"/></xsl:variable>
+                        <xsl:choose>
+                            <xsl:when test="contains($H,'centim')">
+                                <xsl:value-of select="number(substring-before($H,' centim'))"/><xsl:choose>
+                                    <xsl:when test="contains($H,'et demi')"><xsl:text>5</xsl:text></xsl:when>
+                                    <xsl:otherwise><xsl:text>0</xsl:text></xsl:otherwise>
+                                </xsl:choose>
+                            </xsl:when>
+                            <xsl:otherwise><xsl:value-of select="number($H)"/></xsl:otherwise>
+                        </xsl:choose>
+                        <xsl:text> x </xsl:text>
+                        <xsl:choose>
+                            <xsl:when test="contains($W,'centim')">
+                                <xsl:value-of select="number(substring-before($W,' centim'))"/><xsl:choose>
+                                    <xsl:when test="contains($W,'et demi')"><xsl:text>5</xsl:text></xsl:when>
+                                    <xsl:otherwise><xsl:text>0</xsl:text></xsl:otherwise>
+                                </xsl:choose>
+                            </xsl:when>
+                            <xsl:otherwise><xsl:value-of select="number($W)"/></xsl:otherwise>
+                        </xsl:choose><xsl:text> mm</xsl:text>
+                    </xsl:when>
+                    <!-- if format of type number x number mmm, get those entries -->
+                    <xsl:otherwise>
+                        <xsl:variable name="F">  
+                            
+                            <xsl:analyze-string select="$format" regex="[\-—] *[0-9]+ *[xX×] *[0-9]+ *mm">
+                                <xsl:matching-substring><xsl:value-of select="substring-after(.,' ')"/>
+                                </xsl:matching-substring>
+                            </xsl:analyze-string>
+                        </xsl:variable>
+                        <xsl:value-of select="$F"/>
+                        
+                    </xsl:otherwise>
+                </xsl:choose>
+            </xsl:variable>
+            {"label":"Format","value":"<xsl:value-of select="$dimensions"/>"
+            {"label":"Provider",
+            "value":"Bibliothèque nationale de France"},
+            {"label":"Disseminator",
+            "value":"Biblissima"},
+            {"label":"Source Images",
+            "value":"http://gallica.bnf.fr/ark:/12148/<xsl:value-of select="$fullidentifier"/>"},
+            {"label":"Source Metadata",
+            "value":"http://oai.bnf.fr/oai2/OAIHandler?verb=GetRecord&amp;metadataPrefix=oai_dc&amp;identifier=oai:bnf.fr:gallica/ark:/12148/<xsl:value-of select="$fullidentifier"/>"}
+            ],
+            <xsl:variable name="descriptionList">
+                "<xsl:for-each select="document($oai_file)//dc:title">  
+                            <xsl:value-of select="normalize-space(.)"/><xsl:if test="position() != last()">; </xsl:if></xsl:for-each>"
+            </xsl:variable>  
+            "description":<xsl:value-of select="normalize-space($descriptionList)"/>,
+            "thumbnail":{
+            "@id":"http://gallica.bnf.fr/iiif/ark:/12148/<xsl:value-of select="$fullidentifier"/>/f1/full/,150/0/native.jpg",
+            "service":{
+            "@context":"http://iiif.io/api/image/1/context.json",
+            "profile":"http://iiif.io/api/image/1/level2.json",
+            "@id": "http://gallica.bnf.fr/iiif/ark:/12148/<xsl:value-of select="$fullidentifier"/>/f1"
+            }
+            },
+            "logo":"https://raw.githubusercontent.com/IIIF/m2/master/images/logos/bnf-logo.jpeg",
+            <!-- Rights Metadata -->
+            <xsl:variable name="source"><xsl:value-of select="normalize-space(document($oai_file)//dc:source)"/></xsl:variable>
+            "attribution": "<xsl:choose><xsl:when test="contains($source,'Bibliothèque nationale')">BnF</xsl:when></xsl:choose>",
+            "license":"<xsl:choose><xsl:when test="contains($source,'Bibliothèque nationale')">http://gallica.bnf.fr/html/und/conditions-dutilisation-des-contenus-de-gallica</xsl:when></xsl:choose>",
+            "seeAlso": {
+               "@id":"http://oai.bnf.fr/oai2/OAIHandler?verb=GetRecord&amp;metadataPrefix=oai_dc&amp;identifier=oai:bnf.fr:gallica/ark:/12148/<xsl:value-of select="$fullidentifier"/>",
+               "format":"application/xml"
+            },
+            "related":"http://gallica.bnf.fr/ark:/12148/<xsl:value-of select="$fullidentifier"/>",
+
+            
+            <!-- Normal Sequence -->
+            <!-- for sequence only @type required -->
+            <!-- viewingDirection and viewingHint are default values -->
+            "sequences": [
+            {
+            "@id":"<xsl:value-of select="$scBaseURI"/>sequences/normal",
+            "@type":"sc:Sequence",
+            "label":"Current Page Order",
+            "viewingDirection": <xsl:choose>
+                <xsl:when test="document($oai_file)//dc:language='ara'">"right-to-left"</xsl:when>
+                <xsl:when test="document($oai_file)//dc:language='heb'">"right-to-left"</xsl:when>
+                <xsl:when test="document($oai_file)//dc:language='ota'">"right-to-left"</xsl:when>
+                <xsl:when test="document($oai_file)//dc:language='per'">"right-to-left"</xsl:when>
+                <xsl:when test="document($oai_file)//dc:language='jpn'">"right-to-left"</xsl:when>
+                <xsl:otherwise>"left-to-right"</xsl:otherwise></xsl:choose>,
+            "viewingHint":"paged",
+            
+            <!-- for canvas only @id, @type, @height and @width required-->
+            <!-- thumbnail recommended -->
+            "canvases": [
+            <xsl:for-each select="document($pagination_file)//page">
+                <xsl:if test="position() != 1">,</xsl:if>
+                <xsl:variable name="N"><xsl:value-of select="ordre"/></xsl:variable>
+                {
+                "@id":"<xsl:value-of select="$scBaseURI"/>canvas/canvas-<xsl:value-of select="$N"/>",
+                "@type":"sc:Canvas",
+                "label":"<xsl:value-of select="numero"/>",
+                "height":<xsl:value-of select="image_height"/>,
+                "width":<xsl:value-of select="image_width"/>,
+                "images":[
+                {
+                "@type":"oa:Annotation",
+                "motivation":"sc:painting",
+                "resource":{
+                <!-- ./refNum:image/@nomImage not available in Pagination  -->
+                <!-- assuming fixed format T00...$N  with 8 characters     -->
+                <!-- get as many zeros as digits in N -->
+                <xsl:variable name="N0"><xsl:value-of select="replace(string($N),'[0-9]','0')"/></xsl:variable>
+                <!--have the 7 maximum zeros plus N -->
+                <xsl:variable name="NLong">0000000<xsl:value-of select="$N"/></xsl:variable>
+                <!-- remove the leading N0 zeros -->
+                <xsl:variable name="nomImage">T<xsl:value-of select="substring-after($NLong,$N0)"/></xsl:variable>
+                "@id":"<xsl:value-of select="$imageBaseURI"/><xsl:value-of select="$nomImage"/>.jp2",
+                "format":"image/jp2",
+                "@type":"dctypes:Image",
+                "height":<xsl:value-of select="image_height"/>,
+                "width":<xsl:value-of select="image_width"/>,
+                "service":{
+                "@context":"http://iiif.io/api/image/2/context.json",
+                "@id":"<xsl:value-of select="$imageBaseURI"/><xsl:value-of select="$nomImage"/>.jp2",
+                "profile":"http://iiif.io/api/image/2/level2.json"
+                }
+                },
+                "on":"<xsl:value-of select="$scBaseURI"/>canvas/canvas-<xsl:value-of select="$N"/>"
+                }
+                ]<!--,
+                "otherContent":[{
+                  "@id":"",
+                  "@type":""
+                }]-->
+                }
+            </xsl:for-each>
+            ]
+            }
+            ]
+            }
+        </xsl:result-document>
+        </xsl:if>
+                </xsl:if>
+            </xsl:if>
+        </xsl:for-each>
+    </xsl:template>
+</xsl:stylesheet>
